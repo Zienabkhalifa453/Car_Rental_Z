@@ -15,13 +15,16 @@ namespace Car_Rental.Controllers
     {
         private readonly UserManager<ApplicationUser> userManger;
         private readonly IConfiguration configuration;
+        private readonly SignInManager<ApplicationUser> signInManager;
         private readonly RoleManager<IdentityRole> roleManager;
 
 
         public AccountController(UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager, IConfiguration configuration)
+
         {
             this.userManger = userManager;
             this.configuration = configuration;
+            this.signInManager = signInManager;
             this.roleManager = roleManager;
         }
 
@@ -32,7 +35,7 @@ namespace Car_Rental.Controllers
 
         [HttpPost("register")]
         // api/account/Register
-        public async Task<IActionResult> Register(RegisterUserDto registerUserDto)
+        public async Task<ActionResult<GeneralResponse>> Register(RegisterUserDto registerUserDto)
         {
             if (ModelState.IsValid)
             {
@@ -49,6 +52,25 @@ namespace Car_Rental.Controllers
                 IdentityResult Result = await userManger.CreateAsync(user, registerUserDto.Password);
                 if (Result.Succeeded)
                 {
+     if (registerUserDto.Role.ToUpper() == "ADMIN")
+                    {
+                        await userManger.AddToRoleAsync(user, "ADMIN");
+                    }
+                    else
+                    {
+                        await userManger.AddToRoleAsync(user, "CUSTOMER");
+                    }
+
+                    return new GeneralResponse { IsPass = true, Message = "Account created successfully" };
+                }
+                else
+                {
+                    return new GeneralResponse { IsPass = false, Message = "Failed to create account" };
+                }
+
+
+
+
 
 
                     await userManger.AddToRoleAsync(user, "ADMIN");
@@ -60,14 +82,6 @@ namespace Car_Rental.Controllers
 
 
 
-                //if (registerUserDto.Role.ToUpper() == "ADMIN")
-                //{
-                //    await AssignRole(user, "ADMIN");
-                //}
-                //else
-                //{
-                //    await AssignRole(user, "CUSTOMER");
-                //}
 
                 /////
                 //if (!roleManager.RoleExistsAsync("Admin").Result)
@@ -91,7 +105,7 @@ namespace Car_Rental.Controllers
 
 
                 /////
-                return BadRequest(Result.Errors);
+
 
             }
             return BadRequest(ModelState);
@@ -106,7 +120,7 @@ namespace Car_Rental.Controllers
         }
         [HttpPost("login")]
         // api/account/login (UserNAme/Password)
-        public async Task<IActionResult> Login(LoginDto loginUser)
+        public async Task<ActionResult<GeneralResponse>> Login(LoginDto loginUser)
         {
             if (ModelState.IsValid)
             {
@@ -138,18 +152,61 @@ namespace Car_Rental.Controllers
                         return Ok(new
                         {
                             token = new JwtSecurityTokenHandler().WriteToken(token),
-                            expired = token.ValidTo
+                            expired = token.ValidTo,
+                            ispass = true,
+
 
                         });
 
                     }
                 }
 
-                return Unauthorized("InValid User");
 
             }
-            return BadRequest(ModelState);
+            return new GeneralResponse
+            {
+                IsPass = false,
+                Message = "invalid account"
+            };
 
         }
+        [HttpPost("reset-password")]
+        // api/account/reset-password
+        public async Task<ActionResult<GeneralResponse>> ResetPassword(ResetPasswordDto resetPasswordDto)
+        {
+            var user = await userManger.FindByNameAsync(resetPasswordDto.UserName);
+            if (user == null)
+            {
+
+                return BadRequest(new GeneralResponse { IsPass = false, Message = "User not found." });
+            }
+
+            var signInResult = await signInManager.PasswordSignInAsync(user.UserName, resetPasswordDto.oldPassword, false, lockoutOnFailure: false);
+            if (signInResult.Succeeded == false)
+            {
+
+                return BadRequest(new GeneralResponse { IsPass = false, Message = "Invalid  password." });
+            }
+            else
+            {
+
+                var Token = await userManger.GeneratePasswordResetTokenAsync(user);
+
+                var result = await userManger.ResetPasswordAsync(user, Token, resetPasswordDto.NewPassword);
+                if (result.Succeeded)
+                {
+                    return Ok(new GeneralResponse { IsPass = true, Message = "Password reset successfully." });
+                }
+                else
+                {
+
+                    return BadRequest(new GeneralResponse { IsPass = false, Message = "Failed to reset password." });
+                }
+            }
+        }
+
+
+
     }
 }
+
